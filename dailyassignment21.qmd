@@ -4,3 +4,63 @@ format: html
 editor: visual
 ---
 
+```{r}
+library(dataRetrieval)
+library(dplyr)
+library(lubridate)
+library(tsibble)
+
+
+# Example: Cache la Poudre River at Mouth (USGS site 06752260)
+poudre_flow <- readNWISdv(siteNumber = "06752260",    # Download data from USGS for site 06752260
+                          parameterCd = "00060",      # Parameter code 00060 = discharge in cfs)
+                          startDate = "2013-01-01",   # Set the start date
+                          endDate = "2023-12-31") |>  # Set the end date
+  renameNWISColumns() |>                              # Rename columns to standard names (e.g., "Flow", "Date")
+  mutate(Date = yearmonth(Date)) |>                   # Convert daily Date values into a year-month format (e.g., "2023 Jan")
+  group_by(Date) |>                                   # Group the data by the new monthly Date
+  summarise(Flow = mean(Flow))                       # Calculate the average daily flow for each month
+```
+
+```{r}
+poudre_ts <- poudre_flow %>%
+  as_tsibble(index = Date)
+
+```
+
+```{r}
+library(ggplot2)
+library(plotly)
+
+p <- ggplot(poudre_ts, aes(x = Date, y = Flow)) +
+  geom_line(color = "purple") +
+  labs(title = "Monthly Streamflow - Cache la Poudre River",
+       x = "Date", y = "Flow (cfs)")
+
+ggplotly(p)
+
+```
+
+```{r}
+library(feasts)
+
+poudre_ts %>%
+  gg_subseries(Flow)
+```
+
+
+```{r}
+library(fable)
+library(fabletools)
+
+decomp <- poudre_ts %>%
+  model(STL(Flow))
+
+decomp %>%
+  components() %>%
+  autoplot()
+```
+
+## The STL decomposition shows three main patterns in the streamflow data. The trend shows a slow increase in flow from 2013 to 2015, followed by a decline through 2020, and a slight rise again after that. The seasonal component shows a strong and consistent annual cycle, with peaks in late spring or early summer probably caused by snowmelt. Lastly, the remainder shows short-term fluctuations not explained by trend or seasonality—maybe from storms, droughts, or water management events.
+
+
